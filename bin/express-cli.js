@@ -221,7 +221,7 @@ function createApplication (name, dir) {
 
   copyTemplateMulti(routesSourceDir, dir + '/routes', '*.js')
 
-  if (program.view) {
+  if (program.view && !program.api) {
     // Copy view templates
     mkdir(dir, 'views')
     pkg.dependencies['http-errors'] = '~1.6.3'

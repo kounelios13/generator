@@ -53,10 +53,11 @@ program
   .option('    --hbs', 'add handlebars engine support', renamedOption('--hbs', '--view=hbs'))
   .option('-H, --hogan', 'add hogan.js engine support', renamedOption('--hogan', '--view=hogan'))
   .option('-v, --view <engine>', 'add view <engine> support (dust|ejs|hbs|hjs|jade|pug|twig|vash) (defaults to jade)')
-  .option('    --no-view', 'use static html instead of view engine')
+  .option('    --no-view', 'use static html instead of view engine',null ,false)
   .option('-c, --css <engine>', 'add stylesheet <engine> support (less|stylus|compass|sass) (defaults to plain css)')
   .option('    --git', 'add .gitignore')
   .option('-f, --force', 'force on non-empty directory')
+  .option('--api','if enabled no css or view files will be generated only routes')
   .parse(process.argv)
 
 if (!exit.exited) {
@@ -177,15 +178,20 @@ function createApplication (name, dir) {
   app.locals.uses.push('cookieParser()')
   pkg.dependencies['cookie-parser'] = '~1.4.4'
 
+  // Setups cors package
+  app.locals.modules.cors = 'cors'
+  app.locals.uses.push('cors()')
+  pkg.dependencies.cors = '~2.8.5'
+
   if (dir !== '.') {
     mkdir(dir, '.')
   }
-
-  mkdir(dir, 'public')
-  mkdir(dir, 'public/javascripts')
-  mkdir(dir, 'public/images')
-  mkdir(dir, 'public/stylesheets')
-
+  if (program.view && !program.api) {
+    mkdir(dir, 'public')
+    mkdir(dir, 'public/javascripts')
+    mkdir(dir, 'public/images')
+    mkdir(dir, 'public/stylesheets')
+  }
   // copy css templates
   switch (program.css) {
     case 'less':
@@ -201,13 +207,19 @@ function createApplication (name, dir) {
       copyTemplateMulti('css', dir + '/public/stylesheets', '*.sass')
       break
     default:
-      copyTemplateMulti('css', dir + '/public/stylesheets', '*.css')
+      // copy css templates only if we have a view system
+      if(!program.css && !program.api) {
+        copyTemplateMulti('css', dir + '/public/stylesheets', '*.css')
+      } 
       break
   }
 
   // copy route templates
   mkdir(dir, 'routes')
-  copyTemplateMulti('js/routes', dir + '/routes', '*.js')
+  // If --api is passed we will copy the routes-api dir to routes else we use the default routes dir
+  const routesSourceDir = 'js/' + (program.api ? 'routes-api' : 'routes')
+
+  copyTemplateMulti(routesSourceDir, dir + '/routes', '*.js')
 
   if (program.view) {
     // Copy view templates
@@ -241,7 +253,9 @@ function createApplication (name, dir) {
     }
   } else {
     // Copy extra public files
-    copyTemplate('js/index.html', path.join(dir, 'public/index.html'))
+    if(program.view && !program.api){
+      copyTemplate('js/index.html', path.join(dir, 'public/index.html'))
+    }
   }
 
   // CSS Engine support
@@ -320,8 +334,9 @@ function createApplication (name, dir) {
   }
 
   // Static files
-  app.locals.uses.push("express.static(path.join(__dirname, 'public'))")
-
+  if (!program.api) {
+    app.locals.uses.push("express.static(path.join(__dirname, 'public'))")
+  }
   if (program.git) {
     copyTemplate('js/gitignore', path.join(dir, '.gitignore'))
   }
@@ -460,12 +475,15 @@ function main () {
   }
 
   // Default view engine
-  if (program.view === true) {
+  if (program.view === true && !program.api) {
     warning('the default view engine will not be jade in future releases\n' +
       "use `--view=jade' or `--help' for additional options")
     program.view = 'jade'
   }
 
+  if (program.api) {
+    warning('the --api flag was used, no public folder created')
+  }
   // Generate application
   emptyDirectory(destinationPath, function (empty) {
     if (empty || program.force) {
